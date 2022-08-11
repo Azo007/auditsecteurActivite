@@ -1,0 +1,207 @@
+# Lecture du dataset dans spark
+
+df = spark.read.option("header","true").csv('C:\spark_test_work\chiffres-cles-2018.csv', sep=';')
+
+# Affichage du schéma du dataframme
+
+df.printSchema()
+
+# 1 - Quelles sont les trois premières entreprises ayant le plus gros chiffre d'affaire ?
+
+# conversion des colonnes CA1, CA2, CA3 du type String vers le int
+df = df.withColumn("CA 3", df["CA 3"].cast('int')).withColumn("CA 2", df["CA 2"].cast('int')).withColumn("CA 1", df["CA 1"].cast('int'))
+
+# remplacer les valeurs "null" par "1"
+df = df.na.fill(value=1,subset=["CA 1", "CA 2", "CA 3"])
+
+#somme des différents chiffres d'affaire par entreprise
+df_1 = df.select("Dénomination", (col("CA 1") + col("CA 2") + col("CA 3")).alias("sum")).sort(["sum"], ascending = False)
+
+
+# 2 - Quelles sont les entreprises les plus anciennes?
+
+
+from pyspark.sql.functions import *
+
+# conversion de la colonne date du type String vers le type Date 
+df = df.withColumn("Date immatriculation", to_date(df["Date immatriculation"], 'yyyy-MM-dd'))
+
+# suppression des valeurs nulles
+df_2 = df.na.drop(subset=["Date immatriculation"])
+
+# resultat
+df_2.select("Dénomination", "Date immatriculation").sort(["Date immatriculation"], ascending = True).show()
+
+
+# 3 - Quelles sont les entreprises qui emploient le moins de personnes?
+
+# conversion des colonnes Effectif 1, Effectif 2, Effectif 3 du type String vers le int
+df = df.withColumn("Effectif 1", df["Effectif 1"].cast('int')).withColumn("Effectif 2", df["Effectif 2"].cast('int')).withColumn("Effectif 3", df["Effectif 3"].cast('int'))
+
+# remplacer les valeurs "null" des colonnes Effectif 1, Effectif 2, Effectif 3 par "1"
+df = df.na.fill(value=1, subset=["Effectif 1", "Effectif 2", "Effectif 3"])
+
+# resultat
+df_3 = df.select("Dénomination", (col("Effectif 1") + col("Effectif 2") + col("Effectif 3")).alias("Somme des effectifs"))
+df_3.sort(df_3["Somme des effectifs"], ascending = True).show()
+
+# 4 - Quelles sont les codes naf qui embauchent le plus
+
+#resultat
+df4 = df.select("Dénomination", "Code APE", (col("Effectif 1") + col("Effectif 2") + col("Effectif 3")).alias("somme")).sort(["somme"], ascending = False)
+df4.groupBy("Code APE").sum('somme').show()
+
+# 5 - Quelles sont les entreprises avec la plus grande croissance en termes de chiffres d'affaires?
+
+
+
+# 6 - Créer un dataframe df_secteur_activite qui contiendra uniquement les différents code naf et leurs libellées (pas de doublons)
+
+# retour les couples [Code APE, Libellé APE] de façon unique
+df_secteur_activite = df.select("Code APE", "Libellé APE").distinct()
+
+# retour les Codes APE avec leurs libellé
+df_6 = df.select("Code APE", "Libellé APE").distinct()
+df_secteur_activite = df_6.dropDuplicates(['Code APE'])
+
+# constat : dans les dataset on a des codes APE qui on des libellés différents
+
+# 7 - Quelles sont les villes où le chiffre d'affaires est plus élevé?
+
+
+# 10 - Quels sont les villes qui ont les plus anciennes entreprises?
+
+# difference de date avec la date actuelle
+df_10 = df.select("Ville", "Code postal", "Département", "Date immatriculation", current_date().alias("Date du jour"), datediff(current_date(), df["Date immatriculation"]).alias("Différence de date"))
+
+#moyenne de la différence de date groupé
+df_10 = df_10.groupBy("Ville").mean("Différence de date")
+
+#arrondir les valeurs
+df_10 = df_10.withColumn("Arrondi des avg", F.round(df_10["avg(Différence de date)"]).cast('integer'))
+
+#
+df_10 = df_10.select("Ville", "avg(Différence de date)", "Arrondi des avg", current_date().alias("Date du jour"))
+
+#
+df_10 = df_10.withColumn("Date moyenne", F.date_sub(df_10["Date du jour"], df_10["Arrondi des avg"]))
+
+#resultat:
+df_10.select("Ville", "Date moyenne").sort(["Date moyenne"], ascending = True).show()
+
+
+# 11 - Quelles sont les villes où les entreprises sont le plus crées durant ses dernières années?
+
+#résultat
+df_11 = df.select("Siren", "Ville").distinct().groupBy("Ville").count().sort(["count"], ascending = False)
+df_11.show()
+
+# 12 - Quelles sont les secteurs d'activités (code naf) où les entreprises sont le plus crées durant ses dernières années?
+
+#résultat
+df_12 = df.select("Code APE").groupBy("Code APE").count().sort(["count"], ascending = False)
+df_12.show()
+
+# 13 - Faire une jointure avec le résultat du dataframe précédent afin de trouver avec la table df_secteur_activite afin de retrouver les libellés de ses code anf?  
+
+
+df_13 = df_12.join(df_secteur_activite, (df_12["Code APE"] == df_secteur_activite["Code APE"]), "inner")
+df_13.show()
+
+
+#Quel est le nombre de partitions du dataframe résultant?
+
+
+
+# 14 - Quels sont les départements qui ont les plus anciennes entreprises?
+
+# difference de date avec la date actuelle
+df_14 = df.select("Département", "Date immatriculation", current_date().alias("Date du jour"), datediff(current_date(), df["Date immatriculation"]).alias("Différence de date"))
+
+#moyenne de la différence de date groupé par département
+df_14 = df_14.groupBy("Département").mean("Différence de date")
+
+from pyspark.sql import functions as F
+
+#arrondir les valeurs
+df_14 = df_14.withColumn("Arrondi des avg", F.round(df_14["avg(Différence de date)"]).cast('integer'))
+
+#
+df_14 = df_14.select("Département", "avg(Différence de date)", "Arrondi des avg", current_date().alias("Date du jour"))
+
+#
+df_14 = df_14.withColumn("Date moyenne", F.date_sub(df_14["Date du jour"], df_14["Arrondi des avg"]))
+
+#resultat:
+df_14.select("Département", "Date moyenne").sort(["Date moyenne"], ascending = True).show()
+
+
+# 15 - Quels sont les codes naf les plus doninants pour chaque département?
+
+#groupement des données par département et code ape
+df_15 = df.groupBy("Département", "Code APE").count().withColumnRenamed("count", "compte")
+
+#groupement des données par département et selection des valeurs max pour chaque département
+df15 = df_15.groupBy("Département").agg({'compte': 'max'}).withColumnRenamed("Département", "Dpart")
+
+#jointure entre les dataframmes df_15 et df15 afin de présenter les codes APE
+df_15 = df_15.join(df15, (df_15["Département"] == df15["Dpart"]) & (df_15["compte"] == df15["max(compte)"]), "inner")
+
+#suppression des colonnes doubles après jointure
+df_15 = df_15.drop("Dpart", "compte")
+df_15.show()
+
+
+# 16 - Quelles sont les villes où les entreprises sont le plus crées durant les 3 dernières années?
+
+#résultat
+df_16 = df.select("Ville", "Siren").groupBy("Ville").count().withColumnRenamed("count", "CountVille").sort(["CountVille"], ascending = False)
+df_16.show()
+
+
+# 17 - Quels sont les secteurs d'activité qui ont le meilleur résultat sur les trois années d'activité
+
+df = df.withColumn("Résultat 1", df["Résultat 1"].cast('int')).withColumn("Résultat 2", df["Résultat 2"].cast('int')).withColumn("Résultat 3", df["Résultat 3"].cast('int'))
+df = df.na.fill(value=1, subset=["Résultat 1", "Résultat 2", "Résultat 3"])
+df_17 = df.select("Dénomination", "Libellé APE", (col("Résultat 1") + col("Résultat 2") + col("Résultat 3")).alias('Somme résultat par entreprise'))
+df_17 = df_17.groupBy("Libellé APE").agg({'Somme résultat par entreprise': 'sum'}).withColumnRenamed("sum(Somme résultat par entreprise)", "Somme des resultats par secteur d'activité sur les 3 années")
+df_17.sort(["Somme des resultats par secteur d'activité sur les 3 années"], ascending = False).show()
+
+
+# 21 - Quelles sont les formes juridiquement les plus dominantes  par département?
+
+#groupement des données par département et formes juridique
+df_21 = df.groupBy("Département", "Forme Juridique").agg({'Forme Juridique': 'count'})
+
+#groupement des données par département et selection des valeurs max pour chaque département
+df21 = df_21.groupBy("Département").agg({'count(Forme Juridique)': 'max'}).withColumnRenamed("Département", "Dpart")
+
+#jointure entre les dataframmes df_21 et df21 afin de présenter les différentes formes juridiques
+df_21 = df_21.join(df21, (df_21["Département"] == df21["Dpart"]) & (df_21["count(Forme Juridique)"] == df21["max(count(Forme Juridique))"]), "inner")
+
+#suppression des colonnes doubles après jointure
+df_21 = df_21.drop("Dpart", "count(Forme Juridique)")
+df_21.show()
+
+
+# 22 - Quelles sont les formes juridiques plus dominantes par secteur d'activité?
+
+#groupement des données par Libellé APE et formes juridique
+df_22 = df.groupBy("Libellé APE", "Forme Juridique").agg({'Forme Juridique': 'count'})
+
+#groupement des données par Libellé APE et selection des valeurs max pour chaque Libellé APE
+df22 = df_22.groupBy("Libellé APE").agg({'count(Forme Juridique)': 'max'}).withColumnRenamed("Libellé APE", "Libellé")
+
+#jointure entre les dataframmes df_22 et df22 afin de présenter les différentes formes juridiques
+df_22 = df_22.join(df22, (df_22["Libellé APE"] == df22["Libellé"]) & (df_22["count(Forme Juridique)"] == df22["max(count(Forme Juridique))"]), "inner")
+
+#suppression des colonnes doubles après jointure
+df_22 = df_22.drop("Libellé", "count(Forme Juridique)")
+df_22.show()
+
+
+# 23 - Quels sont les secteurs d'activité où on observe le plus de création d'entreprise?
+
+#résultat
+df_23 = (df.groupBy("Libellé APE").agg({'Libellé APE': 'count'})).sort(['count(Libellé APE)'], ascending = False)
+df_23.show()
