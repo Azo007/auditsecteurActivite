@@ -53,6 +53,14 @@ df4.groupBy("Code APE").sum('somme').show()
 
 # 5 - Quelles sont les entreprises avec la plus grande croissance en termes de chiffres d'affaires?
 
+#calcul de CA 1/ CA 2, CA 1/ CA 3, CA 2/ CA 3
+df_5 = df.withColumn("CA 1/ CA 2", (col("CA 1") / col("CA 2"))).withColumn("CA 1/ CA 3", (col("CA 1") / col("CA 3"))).withColumn("CA 2/ CA 3", (col("CA 2") / col("CA 3")))
+
+#calcul de la moyenne mean_of_col(CA 1/ CA 2, CA 1/ CA 3, CA 2/ CA 3)
+df_5= df_5.withColumn("mean_of_col(CA 1/ CA 2, CA 1/ CA 3, CA 2/ CA 3)", ((col("CA 1/ CA 2") + col("CA 1/ CA 3") + col("CA 2/ CA 3"))/3))
+
+#resultat
+df_5.select("Dénomination", "mean_of_col(CA 1/ CA 2, CA 1/ CA 3, CA 2/ CA 3)").sort(["mean_of_col(CA 1/ CA 2, CA 1/ CA 3, CA 2/ CA 3)"], ascending = False).show()
 
 
 # 6 - Créer un dataframe df_secteur_activite qui contiendra uniquement les différents code naf et leurs libellées (pas de doublons)
@@ -62,12 +70,40 @@ df_secteur_activite = df.select("Code APE", "Libellé APE").distinct()
 
 # retour les Codes APE avec leurs libellé
 df_6 = df.select("Code APE", "Libellé APE").distinct()
-df_secteur_activite = df_6.dropDuplicates(['Code APE'])
+df_secteur_activite = df_6.dropDuplicates(['Code APE']).show()
 
 # constat : dans les dataset on a des codes APE qui on des libellés différents
 
 # 7 - Quelles sont les villes où le chiffre d'affaires est plus élevé?
 
+#remplacer par 1 les valeurs null dans les colonnes CA 1, CA 2, CA 3
+df = df.na.fill(value=1,subset=["CA 1", "CA 2", "CA 3"])
+
+#somme des colonnes CA 1, CA 2, CA 3 pour chaque éléments et somme des CAs pour chaque ville puis ordonner par ordre décroissant
+df_7= df.select("Ville", (col("CA 1") + col("CA 2") + col("CA 3")).alias("somme")).groupBy("Ville").sum("somme").sort(["sum(somme)"], ascending = False)
+
+#résultat
+df_7.show()
+
+
+# 8 - Quels sont les villes où les entreprises embauchent le moins?
+
+#remplacer les valeurs "null" par 1 dans les colonnes Effectif 1, Effectif 2, Effectif 3
+df_8 = df.na.fill(value=1, subset=["Effectif 1", "Effectif 2", "Effectif 3"])
+
+#somme des effectifs et groupage par ville
+df_8 = df_8.select("Dénomination", "Code postal", "Ville", (col("Effectif 1") + col("Effectif 2") + col("Effectif 3")).alias("Somme des effectifs")).groupBy("Ville").sum("Somme des effectifs")
+
+#suppression des valeurs null et affichage
+df_8.na.drop(subset=["sum(Somme des effectifs)"]).sort(df_8["sum(Somme des effectifs)"], ascending = True).show()
+
+
+# 9 - Quels sont les codes naf où il y'a eu le plus grand nombre de réduction d'éffectifs?
+
+df_9 = df.groupBy("Code APE").sum("Effectif 1", "Effectif 2", "Effectif 3")
+df_9 = df_9.withColumn("Effectif 1/Effectif 2", (col("sum(Effectif 1)") / col("sum(Effectif 2)"))).withColumn("Effectif 2/Effectif 3", (col("sum(Effectif 2)") / col("sum(Effectif 3)"))).withColumn("Effectif 1/Effectif 3", (col("sum(Effectif 1)") / col("sum(Effectif 3)")))
+df_9 = df_9.withColumn("Moyenne des effectifs", ((col("Effectif 1/Effectif 2") + col("Effectif 2/Effectif 3") + col("Effectif 1/Effectif 3"))/3))
+df_9.select("Code APE", "Moyenne des effectifs").sort(["Moyenne des effectifs"], ascending = False).show()
 
 # 10 - Quels sont les villes qui ont les plus anciennes entreprises?
 
@@ -110,8 +146,9 @@ df_13.show()
 
 
 #Quel est le nombre de partitions du dataframe résultant?
+df_13.rdd.getNumPartitions()
 
-
+#le dataframe resultant a 1 partition
 
 # 14 - Quels sont les départements qui ont les plus anciennes entreprises?
 
@@ -168,6 +205,34 @@ df_17 = df_17.groupBy("Libellé APE").agg({'Somme résultat par entreprise': 'su
 df_17.sort(["Somme des resultats par secteur d'activité sur les 3 années"], ascending = False).show()
 
 
+
+# 18 - Quels sont les secteurs qui ont eu la meilleure croissance de leur résultat?
+
+
+df_18 = df.groupBy("Libellé APE").agg({'Résultat 1': 'sum', 'Résultat 2': 'sum', 'Résultat 3': 'sum'})
+df_18 = df_18.withColumn("sommeR1/R2", (col("sum(Résultat 1)") / col("sum(Résultat 2)"))).withColumn("sommeR1/R3", (col("sum(Résultat 1)") / col("sum(Résultat 3)"))).withColumn("sommeR2/R3", (col("sum(Résultat 2)") / col("sum(Résultat 3)")))
+df_18 = df_18.withColumn("mean (R1, R2, R3)", ((col("sommeR1/R2") + col("sommeR1/R3") + col("sommeR2/R3"))/3)).sort(["mean (R1, R2, R3)"], ascending = False)
+df_18.select("Libellé APE", "mean (R1, R2, R3)").show()
+
+
+
+# 19 - Quels sont les secteurs d'activité qui ont le plus reduit leur effectif?
+
+df_19 = df.groupBy("Libellé APE").sum("Effectif 1", "Effectif 2", "Effectif 3")
+df_19 = df_19.withColumn("Effectif 1/Effectif 2", (col("sum(Effectif 1)") / col("sum(Effectif 2)"))).withColumn("Effectif 2/Effectif 3", (col("sum(Effectif 2)") / col("sum(Effectif 3)"))).withColumn("Effectif 1/Effectif 3", (col("sum(Effectif 1)") / col("sum(Effectif 3)")))
+df_19 = df_19.withColumn("Moyenne des effectifs", ((col("Effectif 1/Effectif 2") + col("Effectif 2/Effectif 3") + col("Effectif 1/Effectif 3"))/3))
+df_19.select("Libellé APE", "Moyenne des effectifs").sort(["Moyenne des effectifs"], ascending = False).show()
+
+
+# 20 - Quels sont les departements où les entreprises ont le plus réduit leur effectifs?
+
+
+df_20 = df.groupBy("Département").agg({'Effectif 1': 'sum', 'Effectif 2': 'sum', 'Effectif 3': 'sum'})
+df_20 = df_20.withColumn("sommeE1/E2", (col("sum(Effectif 1)") / col("sum(Effectif 2)"))).withColumn("sommeE1/E3", (col("sum(Effectif 1)") / col("sum(Effectif 3)"))).withColumn("sommeE2/E3", (col("sum(Effectif 2)") / col("sum(Effectif 3)")))
+df_20 = df_20.withColumn("mean (E1, E2, E3)", ((col("sommeE1/E2") + col("sommeE1/E3") + col("sommeE2/E3"))/3)).sort(["mean (E1, E2, E3)"], ascending = False)
+df_20.select("Département", "mean (E1, E2, E3)").show()
+
+
 # 21 - Quelles sont les formes juridiquement les plus dominantes  par département?
 
 #groupement des données par département et formes juridique
@@ -205,3 +270,14 @@ df_22.show()
 #résultat
 df_23 = (df.groupBy("Libellé APE").agg({'Libellé APE': 'count'})).sort(['count(Libellé APE)'], ascending = False)
 df_23.show()
+
+
+# 24 - Quelles sont les régions où les entreprises qui réalisent les meilleurs résultat?
+
+df_24 = df.select("Région", (col("Résultat 1") + col("Résultat 2") + col("Résultat 3")).alias("Somme résultat")).groupBy("Région").agg({'Somme résultat': 'sum'}).sort(["sum(Somme résultat)"], ascending = False)
+df_24.show()
+
+# 25 - Quel est le secteur d'activité avec la plus faible rentabilité (rentabilité = (résultat/chiffre d'affaires))?
+
+df_25 = df.select("Libellé APE", (col("Résultat 1") + col("Résultat 2") + col("Résultat 3")).alias("Résultat"), (col("CA 1") + col("CA 2") + col("CA 3")).alias("CA")).groupBy("Libellé APE").agg({'CA': 'sum', 'Résultat': 'sum'})
+df_25.select("Libellé APE", (col("sum(Résultat)") / col("sum(CA)")).alias("Rentabilité")).sort(["Rentabilité"], ascending = False).show()
